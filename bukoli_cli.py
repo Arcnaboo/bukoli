@@ -6,6 +6,7 @@ import bukoli_service as svc
 HELP = """\
 Bukoli points:
   points city=Ankara
+  points city=Ankara include_phone=true limit=5
   points city=7
   points county=72
   points                    (all points; very large — use limit=20)
@@ -45,7 +46,12 @@ def print_points(data, limit=50) -> None:
     total = data["total"]
     print(f"Found {total} Bukoli point(s)")
     for poi in data["points"]:
-        print(f"  [{poi['id']}] {poi['name']}  ({poi['lat']}, {poi['lng']})")
+        line = f"  [{poi['id']}] {poi['name']}  ({poi['lat']}, {poi['lng']})"
+        if poi.get("phone"):
+            line += f"  phone: {poi['phone']}"
+        print(line)
+    if data.get("phones_found") is not None:
+        print(f"Phones found: {data['phones_found']}/{data['count']}")
     if total > limit:
         print(f"  ... and {total - limit} more (use limit= or point poi=<id>)")
 
@@ -129,9 +135,17 @@ def main():
                 print_json(svc.get_neighborhoods(int(params["district"])))
             elif name == "points":
                 limit = int(params.pop("limit", 50))
+                include_phone = params.pop("include_phone", "false").lower() in {"1", "true", "yes"}
+                delay = float(params.pop("delay", 1.5))
                 city = params.get("city")
                 county_id = int(params["county"]) if "county" in params else None
-                data = svc.get_points(city=city, county_id=county_id, limit=limit)
+                data = svc.get_points(
+                    city=city,
+                    county_id=county_id,
+                    limit=limit,
+                    include_phone=include_phone,
+                    delay=delay,
+                )
                 print_points(data, limit=limit)
             elif name in ("point", "poi"):
                 if "poi" not in params:

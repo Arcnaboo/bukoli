@@ -117,12 +117,62 @@ def get_poi(poi_id: int) -> dict[str, Any]:
     return fetch("/ajax/poi-detail", {"poi": poi_id})
 
 
+def enrich_points_with_phones(
+    points: list[dict[str, Any]],
+    *,
+    city_name: str | None = None,
+    delay: float = 1.5,
+) -> list[dict[str, Any]]:
+    enriched: list[dict[str, Any]] = []
+
+    for index, poi in enumerate(points, start=1):
+        try:
+            lookup = lookup_phone_on_maps(
+                poi["name"],
+                poi["lat"],
+                poi["lng"],
+                city_name=city_name,
+            )
+            enriched.append({
+                "id": poi["id"],
+                "name": poi["name"],
+                "lat": poi["lat"],
+                "lng": poi["lng"],
+                "phone": lookup.get("phone"),
+                "google_title": lookup.get("google_title"),
+                "match_score": lookup.get("match_score"),
+                "phone_status": lookup.get("status"),
+            })
+        except Exception as exc:
+            enriched.append({
+                "id": poi["id"],
+                "name": poi["name"],
+                "lat": poi["lat"],
+                "lng": poi["lng"],
+                "phone": None,
+                "google_title": None,
+                "match_score": None,
+                "phone_status": "error",
+                "phone_error": str(exc),
+            })
+
+        if index < len(points):
+            time.sleep(delay)
+
+    return enriched
+
+
 def get_points(
     *,
     city: str | int | None = None,
     county_id: int | None = None,
     limit: int = 50,
+    include_phone: bool = False,
+    delay: float = 1.5,
 ) -> dict[str, Any]:
+    if include_phone and limit > 25:
+        raise ValueError("limit must be <= 25 when include_phone=true")
+
     if city is not None:
         city_id = resolve_city(city)
         data = fetch("/ajax/pois-by-city", {"city": city_id}, timeout=60)
@@ -132,11 +182,20 @@ def get_points(
         data = fetch("/ajax/all-pois", timeout=120)
 
     total = len(data)
+    points = data[:limit]
+    phones_found = None
+
+    if include_phone:
+        city_name = city_label(city) if city is not None else None
+        points = enrich_points_with_phones(points, city_name=city_name, delay=delay)
+        phones_found = sum(1 for point in points if point.get("phone"))
+
     return {
         "total": total,
         "limit": limit,
-        "count": min(total, limit),
-        "points": data[:limit],
+        "count": len(points),
+        "phones_found": phones_found,
+        "points": points,
     }
 
 
@@ -242,35 +301,22 @@ def lookup_phones_batch(
         raise ValueError("Provide city or county_id")
 
     selected = pois[:limit]
-    results: list[dict[str, Any]] = []
-
-    for index, poi in enumerate(selected, start=1):
-        try:
-            lookup = lookup_phone_on_maps(
-                poi["name"],
-                poi["lat"],
-                poi["lng"],
-                city_name=city_name,
-            )
-            results.append({
-                "id": poi["id"],
-                "name": poi["name"],
-                "lat": poi["lat"],
-                "lng": poi["lng"],
-                **lookup,
-            })
-        except Exception as exc:
-            results.append({
-                "id": poi["id"],
-                "name": poi["name"],
-                "lat": poi["lat"],
-                "lng": poi["lng"],
-                "status": "error",
-                "error": str(exc),
-            })
-
-        if index < len(selected):
-            time.sleep(delay)
+    enriched = enrich_points_with_phones(selected, city_name=city_name, delay=delay)
+    results = []
+    for point in enriched:
+        item = {
+            "id": point["id"],
+            "name": point["name"],
+            "lat": point["lat"],
+            "lng": point["lng"],
+            "phone": point.get("phone"),
+            "google_title": point.get("google_title"),
+            "match_score": point.get("match_score"),
+            "status": point.get("phone_status", "error"),
+        }
+        if point.get("phone_error"):
+            item["error"] = point["phone_error"]
+        results.append(item)
 
     found = sum(1 for item in results if item.get("phone"))
     return {

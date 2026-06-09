@@ -34,11 +34,26 @@ class NeighborhoodDto(BaseModel):
     name: str = Field(..., examples=["AHMETADİL MAH"])
 
 
+class PhoneLookupStatus(str, Enum):
+    ok = "ok"
+    no_phone = "no_phone"
+    not_found = "not_found"
+    error = "error"
+
+
 class PointSummaryDto(BaseModel):
     id: int = Field(..., examples=[16437])
     name: str = Field(..., examples=["Ghn İletişim"])
     lat: str = Field(..., examples=["39.897254230305336"])
     lng: str = Field(..., examples=["32.79866974962879"])
+    phone: str | None = Field(None, examples=["0312 123 45 67"])
+    google_title: str | None = Field(None, examples=["Ghn İletişim"])
+    match_score: float | None = Field(None, examples=[0.95])
+    phone_status: PhoneLookupStatus | None = Field(
+        None,
+        description="Set when include_phone=true",
+        examples=[PhoneLookupStatus.ok],
+    )
 
 
 class DayHoursDto(BaseModel):
@@ -68,20 +83,6 @@ class PointDetailDto(BaseModel):
     )
 
 
-class PointsPageDto(BaseModel):
-    total: int = Field(..., examples=[922], description="Total points available for the filter")
-    limit: int = Field(..., examples=[50], description="Requested page size")
-    count: int = Field(..., examples=[50], description="Number of points returned")
-    points: list[PointSummaryDto]
-
-
-class PhoneLookupStatus(str, Enum):
-    ok = "ok"
-    no_phone = "no_phone"
-    not_found = "not_found"
-    error = "error"
-
-
 class PhoneLookupDto(BaseModel):
     query: str = Field(..., examples=["Ghn İletişim Ankara"])
     phone: str | None = Field(None, examples=["0312 123 45 67"])
@@ -95,6 +96,18 @@ class PhoneLookupDto(BaseModel):
 class PointPhoneResponseDto(BaseModel):
     poi: PointDetailDto
     lookup: PhoneLookupDto
+
+
+class PointsPageDto(BaseModel):
+    total: int = Field(..., examples=[922], description="Total points available for the filter")
+    limit: int = Field(..., examples=[50], description="Requested page size")
+    count: int = Field(..., examples=[50], description="Number of points returned")
+    phones_found: int | None = Field(
+        None,
+        examples=[3],
+        description="How many returned points have a phone (only when include_phone=true)",
+    )
+    points: list[PointSummaryDto]
 
 
 class PhoneBatchRequestDto(BaseModel):
@@ -149,6 +162,16 @@ class PointsQuery(BaseModel):
     city: str | None = Field(None, description="City name or id", examples=["Ankara"])
     county_id: int | None = Field(None, description="County / ilçe id", examples=[72])
     limit: int = Field(50, ge=1, le=500, description="Max points to return")
+    include_phone: bool = Field(
+        False,
+        description="Look up Google phone for each returned point (1 SerpAPI credit each; max 25)",
+    )
+    delay: float = Field(
+        1.5,
+        ge=0,
+        le=5,
+        description="Seconds between SerpAPI calls when include_phone=true",
+    )
 
 
 class PointPhoneQuery(BaseModel):

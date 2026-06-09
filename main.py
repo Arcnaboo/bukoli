@@ -96,16 +96,25 @@ def list_points(
             city=query.city,
             county_id=query.county_id,
             limit=query.limit,
+            include_phone=query.include_phone,
+            delay=query.delay,
         )
         return PointsPageDto(
             total=data["total"],
             limit=data["limit"],
             count=data["count"],
+            phones_found=data["phones_found"],
             points=[PointSummaryDto.model_validate(point) for point in data["points"]],
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except svc.SerpApiKeyMissingError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     except svc.BukoliError as exc:
         city_http_errors(exc)
         raise
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
 
 
 @app.get("/points/{poi_id}", response_model=PointDetailDto)
