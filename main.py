@@ -14,7 +14,7 @@ app = FastAPI(
 
 @app.on_event("startup")
 def startup() -> None:
-    load_env()
+    svc.load_env_file()
 
 
 @app.get("/")
